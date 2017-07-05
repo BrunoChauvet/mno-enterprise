@@ -1,7 +1,7 @@
 module MnoEnterprise::Concerns::Controllers::Jpi::V1::SubscriptionsController
   extend ActiveSupport::Concern
 
-  SUBSCIPTION_INCLUDES ||= [:product_instance, :'product_pricing.product', :product_contract, :organization, :user, :'license_assignments.user', :'product_instance.product']
+  SUBSCRIPTION_INCLUDES ||= [:product_instance, :product_pricing, :'product_pricing.product', :product_contract, :organization, :user, :'license_assignments.user', :'product_instance.product']
 
   #==================================================================
   # Instance methods
@@ -15,25 +15,19 @@ module MnoEnterprise::Concerns::Controllers::Jpi::V1::SubscriptionsController
   # GET /mnoe/jpi/v1/organizations/1/subscriptions/id
   def show
     authorize! :manage_app_instances, parent_organization
-    @subscription = fetch_subscription(parent_organization.id, params[:id])
+    @subscription = MnoEnterprise::Subscription.find_one(params[:id], SUBSCRIPTION_INCLUDES)
   end
 
   # POST /mnoe/jpi/v1/organizations/1/subscriptions
   def create
     authorize! :manage_app_instances, parent_organization
-
-    subscription = MnoEnterprise::Subscription.new(subscription_update_params)
-    subscription.relationships.organization = MnoEnterprise::Organization.new(id: parent_organization.id)
-    subscription.relationships.user = MnoEnterprise::User.new(id: current_user.id)
-    subscription.relationships.product_pricing = MnoEnterprise::ProductPricing.new(id: params[:subscription][:product_pricing_id])
-    subscription.relationships.product_contract = MnoEnterprise::ProductContract.new(id: params[:subscription][:product_contract_id])
-    subscription.save
+    subscription = MnoEnterprise::Subscription.create(subscription_create_params)
 
     if subscription.errors.any?
       render json: subscription.errors, status: :bad_request
     else
       MnoEnterprise::EventLogger.info('subscription_add', current_user.id, 'Subscription added', subscription)
-      @subscription = fetch_subscription(parent_organization.id, subscription.id)
+      @subscription = subscription.load_required(SUBSCRIPTION_INCLUDES)
     end
   end
 
@@ -41,7 +35,7 @@ module MnoEnterprise::Concerns::Controllers::Jpi::V1::SubscriptionsController
   def update
     authorize! :manage_app_instances, parent_organization
 
-    subscription = MnoEnterprise::Subscription.where(organization_id: parent_organization.id, id: params[:id]).first
+    subscription = MnoEnterprise::Subscription.find_one(params[:id])
     return render_not_found('subscription') unless subscription
     subscription.update_attributes(subscription_update_params)
 
@@ -49,21 +43,25 @@ module MnoEnterprise::Concerns::Controllers::Jpi::V1::SubscriptionsController
       render json: subscription.errors, status: :bad_request
     else
       MnoEnterprise::EventLogger.info('subscription_update', current_user.id, 'Subscription updated', subscription)
-      @subscription = fetch_subscription(parent_organization.id, subscription.id)
+      @subscription = subscription.load_required(SUBSCRIPTION_INCLUDES)
     end
   end
 
   protected
 
+  def subscription_create_params
+    params.require(:subscription).permit(:start_date, :max_licenses, :custom_data, :product_pricing_id, :product_contract_id).merge(
+      organization_id: parent_organization.id,
+      user_id: current_user.id
+    )
+  end
+
   def subscription_update_params
-    params.require(:subscription).permit(:start_date, :max_licenses, :custom_data)
+    params.require(:subscription).permit(:start_date, :max_licenses, :custom_data, :product_pricing_id)
   end
 
   def fetch_subscriptions(organization_id)
-    MnoEnterprise::Subscription.includes(*SUBSCIPTION_INCLUDES).where(organization_id: organization_id)
+    MnoEnterprise::Subscription.includes(*SUBSCRIPTION_INCLUDES).where(organization_id: organization_id)
   end
 
-  def fetch_subscription(organization_id, id)
-    MnoEnterprise::Subscription.includes(*SUBSCIPTION_INCLUDES).where(organization_id: organization_id, id: id).first
-  end
 end
