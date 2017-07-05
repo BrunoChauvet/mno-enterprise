@@ -1,11 +1,12 @@
 require 'rails_helper'
 
 module MnoEnterprise
-  describe Jpi::V1::SubscriptionsController, type: :controller, ignore: true do
+  describe Jpi::V1::SubscriptionsController, type: :controller do
     include MnoEnterprise::TestingSupport::JpiV1TestHelper
     render_views
     routes { MnoEnterprise::Engine.routes }
     before { request.env['HTTP_ACCEPT'] = 'application/json' }
+    DEPENDENCIES = [:product_instance, :product_pricing, :'product_pricing.product', :product_contract, :organization, :user, :'license_assignments.user', :'product_instance.product']
 
     before(:all) do
       Settings.merge!(dashboard: {provisioning: {enabled: true}})
@@ -28,7 +29,7 @@ module MnoEnterprise
     describe 'GET #index' do
       let(:subscription) { build(:subscription) }
 
-      before { stub_api_v2(:get, "/subscriptions", [subscription], [:product_instance, :product_pricing, :product_contract, :organization, :user, :'license_assignments.user', :'product_instance.product'], {filter: {organization_id: organization.id}}) }
+      before { stub_api_v2(:get, '/subscriptions', [subscription], DEPENDENCIES, {filter: {organization_id: organization.id}}) }
       before { sign_in user }
 
       subject { get :index, organization_id: organization.id }
@@ -39,7 +40,7 @@ module MnoEnterprise
     describe 'GET #show' do
       let(:subscription) { build(:subscription) }
 
-      before { stub_api_v2(:get, "/subscriptions", subscription, [:product_instance, :product_pricing, :product_contract, :organization, :user, :'license_assignments.user', :'product_instance.product'], {filter: {organization_id: organization.id, id: subscription.id}, 'page[number]' => 1, 'page[size]' => 1}) }
+      before { stub_api_v2(:get, "/subscriptions/#{subscription.id}", subscription, DEPENDENCIES) }
       before { sign_in user }
 
       subject { get :show, organization_id: organization.id, id: subscription.id }
@@ -53,26 +54,28 @@ module MnoEnterprise
       let(:pricing) { build(:product_pricing, product: product) }
 
       before { stub_audit_events }
-      before { stub_api_v2(:post, "/subscriptions", subscription, [], {}) }
+      before { stub_api_v2(:post, '/subscriptions', subscription, [], {}) }
+      #Reload
+      before { stub_api_v2(:get, "/subscriptions/#{subscription.id}", subscription, DEPENDENCIES) }
       before { sign_in user }
 
-      subject { post :create, organization_id: organization.id, subscription: {pricing_id: pricing.id} }
+      subject { post :create, organization_id: organization.id, subscription: {product_pricing_id: pricing.id} }
 
       it_behaves_like 'jpi v1 protected action'
 
       it 'passes the correct parameters' do
         expect(subject).to be_successful
         assert_requested_api_v2(:post, '/subscriptions',
-                                 body: {
-                                        "data" => {
-                                          "type" => "subscriptions",
-                                          "attributes" => {
-                                            "pricing_id" => pricing.id,
-                                            "organization_id" => organization.id,
-                                            "user_id" => user.id
-                                          }
-                                        }
-                                      }.to_json)
+                                body: {
+                                  data: {
+                                    type: 'subscriptions',
+                                    attributes: {
+                                      product_pricing_id: pricing.id,
+                                      organization_id: organization.id,
+                                      user_id: user.id
+                                    }
+                                  }
+                                }.to_json)
       end
     end
 
@@ -82,26 +85,28 @@ module MnoEnterprise
       let(:pricing) { build(:product_pricing, product: product) }
 
       before { stub_audit_events }
-      before { stub_api_v2(:get, "/subscriptions", subscription, [], {filter: {organization_id: organization.id, id: subscription.id}, 'page[number]' => 1, 'page[size]' => 1}) }
-      before { stub_api_v2(:patch, "/subscriptions/#{subscription.id}", subscription, [], {}) }
+      before { stub_api_v2(:get, "/subscriptions/#{subscription.id}", subscription) }
+      # Subscription Reload
+      before { stub_api_v2(:get, "/subscriptions/#{subscription.id}", subscription, DEPENDENCIES) }
+      before { stub_api_v2(:patch, "/subscriptions/#{subscription.id}", subscription) }
       before { sign_in user }
 
-      subject { put :update, organization_id: organization.id, id: subscription.id, subscription: {pricing_id: pricing.id} }
+      subject { put :update, organization_id: organization.id, id: subscription.id, subscription: {product_pricing_id: pricing.id} }
 
       it_behaves_like 'jpi v1 protected action'
 
       it 'passes the correct parameters' do
         expect(subject).to be_successful
         assert_requested_api_v2(:patch, "/subscriptions/#{subscription.id}",
-                                 body: {
-                                        "data" => {
-                                          "id" => subscription.id,
-                                          "type" => "subscriptions",
-                                          "attributes" => {
-                                            "pricing_id" => pricing.id
-                                          }
-                                        }
-                                      }.to_json)
+                                body: {
+                                  data: {
+                                    id: subscription.id,
+                                    type: 'subscriptions',
+                                    attributes: {
+                                      product_pricing_id: pricing.id
+                                    }
+                                  }
+                                }.to_json)
       end
     end
   end

@@ -12,18 +12,18 @@ module MnoEnterprise
     property :external_id, type: :string
     property :custom_data, type: :string
 
-    has_one :product_instance
-    has_one :organization
-    has_one :user
-    has_one :product_contract
-    has_one :product_pricing
+    property :product_instance_id, type: :string
+    property :organization_id, type: :string
+    property :user_id, type: :string
+    property :product_contract_id, type: :string
+    property :product_pricing_id, type: :string
 
     def to_audit_event
       {
         id: id,
         status: status,
-        organization_id: organization&.id,
-        user_id: user&.id
+        organization_id: organization_id,
+        user_id: user_id
       }
     end
   end
